@@ -191,12 +191,15 @@ jobs:
           cd "$RUNNER_TEMP/OpenBLAS-${OPENBLAS_VER}"
 
           # 不构建 Fortran（减少复杂度）
-          # TARGET=ARMV8 针对 ARMv8-A 架构（兼容 SVE 之前的硬件）
-          # NO_AFFINITY=1 避免 sched_affinity 在 OHOS 上的问题
+          # TARGET=ARMV8 针对 ARMv8-A 架构
+          # 关键：--target 必须嵌入 CC，OpenBLAS 才认得出目标架构
+          # CROSS=1 开启交叉编译模式（跳过主机 CPU 检测）
+          # DYNAMIC_ARCH=0 禁用自动 CPU 特征检测
+          # NO_AFFINITY=1 避免 sched_affinity 在 OHOS/musl 上出问题
           make -j"$(nproc)" \
             TARGET=ARMV8 \
             BINARY=64 \
-            CC="$OHOS_NATIVE/llvm/bin/clang" \
+            CC="$OHOS_NATIVE/llvm/bin/clang --target=$OHOS_TARGET --sysroot=$OHOS_SYSROOT" \
             AR="$OHOS_NATIVE/llvm/bin/llvm-ar" \
             RANLIB="$OHOS_NATIVE/llvm/bin/llvm-ranlib" \
             HOSTCC=gcc \
@@ -205,9 +208,8 @@ jobs:
             NO_FORTRAN=1 \
             NO_AFFINITY=1 \
             USE_OPENMP=0 \
-            CROSS=1 \
-            CROSS_SUFFIX="$OHOS_NATIVE/llvm/bin/llvm-" \
-            COMMON_OPT="--target=$OHOS_TARGET --sysroot=$OHOS_SYSROOT -fPIC -D__MUSL__ -D__OHOS__"
+            DYNAMIC_ARCH=0 \
+            CROSS=1
 
           # 安装到固定路径
           make install PREFIX=/tmp/openblas-ohos \
