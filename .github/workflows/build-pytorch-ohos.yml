@@ -196,7 +196,8 @@ jobs:
           # CROSS=1 开启交叉编译模式（跳过主机 CPU 检测）
           # DYNAMIC_ARCH=0 禁用自动 CPU 特征检测
           # NO_AFFINITY=1 避免 sched_affinity 在 OHOS/musl 上出问题
-          make -j"$(nproc)" \
+          # 只构建库（跳过 test/utest，避免 musl 缺少 pthread_setaffinity_np 链接错误）
+          make -j"$(nproc)" libs \
             TARGET=ARMV8 \
             BINARY=64 \
             CC="$OHOS_NATIVE/llvm/bin/clang --target=$OHOS_TARGET --sysroot=$OHOS_SYSROOT" \
