@@ -225,8 +225,8 @@ jobs:
           repository: pytorch/pytorch
           ref: ${{ inputs.pytorch_ref || 'v2.5.1' }}
           path: pytorch-src
-          submodules: true
-          fetch-depth: 1
+          submodules: recursive  # PyTorch 有嵌套子模块（如 fbgemm→asmjit）
+          fetch-depth: 0         # 浅克隆会导致子模块 checkout 失败
 
       # ======================================================================
       # 7. 获取 Python/Numpy 头文件路径 + 写 CMake 交叉编译预填文件
