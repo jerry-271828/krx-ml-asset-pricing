@@ -292,16 +292,15 @@ jobs:
 
       # ======================================================================
       # 8. 构建 PyTorch
-      #     关键：使用 setup.py --cmake 标记向 CMake 传递交叉编译参数
-      #     PyTorch 的 setup.py 会接管 cmake 调用，但通过 --cmake 可以追加 -D 参数
+      #     PyTorch 的 cmake.py 自动将所有 CMAKE_/USE_/BUILD_ 环境变量传给 CMake。
+      #     不需要 --cmake -D 标志（setup.py 的 --cmake 只是 RERUN_CMAKE 布尔值）。
       # ======================================================================
       - name: Build PyTorch
         working-directory: pytorch-src
         run: |
           set -euxo pipefail
 
-          # 使用 ccache 包装 OHOS 交叉编译器
-          # CMake/Make 都支持 CC="ccache /path/to/compiler" 的写法
+          # 交叉编译器（ccache 前缀加速重复编译）
           export CC="ccache $OHOS_NATIVE/llvm/bin/clang"
           export CXX="ccache $OHOS_NATIVE/llvm/bin/clang++"
 
@@ -309,38 +308,41 @@ jobs:
 
           export CFLAGS="$TARGET_FLAGS"
           export CXXFLAGS="$TARGET_FLAGS"
-          # 对于 Python 扩展 .so：只加 --code-sign，不加 -static-pie
+          # 对于 Python 扩展 .so：加 --code-sign，不用 -static-pie（那是给可执行文件的）
           export LDFLAGS="--target=$OHOS_TARGET --sysroot=$OHOS_SYSROOT -Wl,--code-sign"
 
-          # CMake 搜索路径（OpenBLAS）
-          export CMAKE_PREFIX_PATH="/tmp/openblas-ohos:$CMAKE_PREFIX_PATH"
+          # --- PyTorch 通过环境变量传给 CMake 的配置 ---
+          # cmake.py 自动转发所有 CMAKE_ / USE_ / BUILD_ 前缀的 env var
+          export CMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE"
+          export CMAKE_CROSSCOMPILING=TRUE
+          export CMAKE_SYSTEM_NAME=Linux
+          export CMAKE_SYSTEM_PROCESSOR=aarch64
+          export CMAKE_PREFIX_PATH="/tmp/openblas-ohos${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+
+          # Python/NumPy 头文件路径（宿主编译环境，架构无关的 C API 头）
+          export PYTHON_EXECUTABLE="$(which python3)"
+          export PYTHON_INCLUDE_DIR="$HOST_PYTHON_INCLUDE"
+          export NUMPY_INCLUDE_DIR="$HOST_NUMPY_INCLUDE"
+
+          # OpenBLAS
+          export OpenBLAS_INCLUDE_DIR=/tmp/openblas-ohos/include
+          export OpenBLAS_LIBRARIES=/tmp/openblas-ohos/lib/libopenblas.a
+          # BLAS=OpenBLAS 已在顶层 env 中设置（通过 USE_* 自动转发到 CMake）
 
           echo "=== Build environment ==="
           echo "CC=$CC"
           echo "CXX=$CXX"
           echo "CFLAGS=$CFLAGS"
           echo "LDFLAGS=$LDFLAGS"
-          echo "TOOLCHAIN_FILE=$TOOLCHAIN_FILE"
+          echo "CMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE"
+          echo "CMAKE_SYSROOT=$OHOS_SYSROOT"
 
           # 安装 PyTorch 构建期 Python 依赖
           pip3 install --break-system-packages -r requirements-build.txt 2>/dev/null || true
 
           # --- 构建 PyTorch（CPU-only，交叉编译）---
-          # setup.py --cmake 标记向 CMake 追加 -D 参数
-          # USE_*=0 等变量还通过环境变量被 setup.py 读取
-          python3 setup.py build \
-            -j"$(nproc)" \
-            --cmake \
-              "-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE" \
-              "-DCMAKE_CROSSCOMPILING=TRUE" \
-              "-DCMAKE_SYSTEM_NAME=Linux" \
-              "-DCMAKE_SYSTEM_PROCESSOR=aarch64" \
-              "-DPYTHON_EXECUTABLE=$(which python3)" \
-              "-DPYTHON_INCLUDE_DIR=$HOST_PYTHON_INCLUDE" \
-              "-DNUMPY_INCLUDE_DIR=$HOST_NUMPY_INCLUDE" \
-              "-DOpenBLAS_INCLUDE_DIR=/tmp/openblas-ohos/include" \
-              "-DOpenBLAS_LIBRARIES=/tmp/openblas-ohos/lib/libopenblas.a" \
-              "-DBLAS=OpenBLAS" \
+          # 不使用 --cmake 标志（它只是 RERUN_CMAKE 布尔值）
+          python3 setup.py build -j"$(nproc)" \
             || {
               echo "=== Build failed. Dumping CMake logs ==="
               find build -name "CMakeError.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
