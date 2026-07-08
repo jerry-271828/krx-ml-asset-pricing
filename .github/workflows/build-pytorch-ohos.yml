@@ -203,7 +203,7 @@ jobs:
             AR="$OHOS_NATIVE/llvm/bin/llvm-ar" \
             RANLIB="$OHOS_NATIVE/llvm/bin/llvm-ranlib" \
             HOSTCC=gcc \
-            NO_SHARED=0 \
+            NO_SHARED=1 \
             NO_LAPACK=1 \
             NO_FORTRAN=1 \
             NO_AFFINITY=1 \
@@ -213,7 +213,7 @@ jobs:
 
           # 安装到固定路径
           make install PREFIX=/tmp/openblas-ohos \
-            NO_SHARED=0 NO_LAPACK=1
+            NO_SHARED=1 NO_LAPACK=1
 
       # ======================================================================
       # 6. 获取 PyTorch 源码
