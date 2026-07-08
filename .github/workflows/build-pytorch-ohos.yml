@@ -284,6 +284,14 @@ jobs:
             set(COMPILER_SUPPORTS_SSE2_MAYBE_RUN_0_EXITCODE 0 CACHE INTERNAL "")
           endif()
 
+          # === ARM / NEON (aarch64 一定有 NEON，是 ARMv8 强制的) ===
+          set(CAFFE2_COMPILER_SUPPORTS_NEON TRUE CACHE BOOL "")
+          set(ARM_NEON_FOUND TRUE CACHE BOOL "")
+          set(CAFFE2_CPU_CAPABILITY_FLAGS "-march=armv8-a+fp+simd" CACHE STRING "")
+          if(NOT DEFINED CAFFE2_USE_MSVC_HOST_TOOLS)
+            set(CAFFE2_USE_MSVC_HOST_TOOLS OFF CACHE BOOL "")
+          endif()
+
           # === Python (host paths are arch-independent C headers) ===
           # These get passed via --cmake flags, not here
           CMAKE_EOF

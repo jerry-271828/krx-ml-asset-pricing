@@ -37,9 +37,9 @@ set(CMAKE_C_FLAGS_INIT   "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -fPI
 set(CMAKE_CXX_FLAGS_INIT "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -fPIC -D__MUSL__ -D__OHOS__")
 
 # Linker: --code-sign embeds the .codesign section required by HarmonyOS kernel.
-# Do NOT use -static-pie for shared libraries (.so/Python extensions) — PIE is
-# for executables only; shared libraries already have type ET_DYN.
-set(CMAKE_EXE_LINKER_FLAGS_INIT    "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -static-pie -Wl,--code-sign")
+# NOTE: PyTorch 构建产物是 Python 扩展 .so，不是独立可执行文件，不需要 -static-pie。
+# -static-pie 会导致 CMake try_compile 失败（sysroot 里某些库只有 .so 没有 .a）。
+set(CMAKE_EXE_LINKER_FLAGS_INIT    "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -Wl,--code-sign")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -Wl,--code-sign")
 set(CMAKE_MODULE_LINKER_FLAGS_INIT "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -Wl,--code-sign")
 
