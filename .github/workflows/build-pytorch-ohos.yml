@@ -23,7 +23,6 @@ on:
 
 permissions:
   contents: read
-  actions: write  # 允许跨 job 传递 artifacts
 
 env:
   OHOS_SDK_RELEASE: '7.0-Beta1'
@@ -287,20 +286,21 @@ jobs:
           fi
 
           # Patch Macros.h for musl __assert_fail
-          python3 -c "
+          # Python 代码缩进必须 > run: | 的内容缩进（10空格），否则 YAML 解析失败
+          python3 << 'PYEOF'
 import re
-try:
-  f=open('c10/macros/Macros.h','r'); c=f.read(); f.close()
-  old=r'    void\n    __assert_fail\(\n        const char\* assertion,\n        const char\* file,\n        unsigned int line,\n        const char\* function\) noexcept __attribute__\(\(__noreturn__\)\);'
-  if re.search(old, c):
-    c2=re.sub(old, '#if !defined(__MUSL__)\n'+old+'\n#endif  // !__MUSL__', c)
-    open('c10/macros/Macros.h','w').write(c2)
+f = open('c10/macros/Macros.h', 'r')
+c = f.read()
+f.close()
+pattern = r'    void\n    __assert_fail\(\n        const char\* assertion,\n        const char\* file,\n        unsigned int line,\n        const char\* function\) noexcept __attribute__\(\(__noreturn__\)\);'
+if re.search(pattern, c):
+    guard = '#if !defined(__MUSL__)\n' + pattern + '\n#endif  // !__MUSL__'
+    c2 = re.sub(pattern, guard, c)
+    open('c10/macros/Macros.h', 'w').write(c2)
     print('Patched Macros.h')
-  else:
+else:
     print('Macros.h pattern not found')
-except Exception as e:
-  print(f'Macros.h patch skipped: {e}')
-"
+PYEOF
 
           pip3 install --break-system-packages -r requirements-build.txt 2>/dev/null || true
 
