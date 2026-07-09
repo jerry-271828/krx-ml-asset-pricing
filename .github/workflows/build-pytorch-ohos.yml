@@ -224,16 +224,16 @@ jobs:
           HOST_PYTHON_INCLUDE=$(python3 -c "import sysconfig; print(sysconfig.get_path('include'))")
           HOST_NUMPY_INCLUDE=$(python3 -c "import numpy; print(numpy.get_include())")
           TOOLCHAIN_FILE="${{ github.workspace }}/cmake/toolchain-ohos.cmake"
-          # Ubuntu 的 pyconfig.h 按目标架构转发到 <multiarch>/python3.X/pyconfig.h。
-          # 交叉编译 --target=aarch64 时会找 aarch64-linux-gnu 版本，host 上没有。
-          # x86_64/aarch64 同为 LP64，头文件内容一致，复制一份即可。
+          # Ubuntu 的 /usr/include/python3.X/pyconfig.h 是 multiarch 转发头，
+          # 按目标架构 include <aarch64-linux-gnu/python3.X/pyconfig.h>。
+          # --sysroot 下 /usr/include 不在默认搜索路径（python3.X 目录是显式 -I 进来的），
+          # 转发目标永远找不到 → 直接用 x86_64 的具体配置覆盖转发头。
+          # x86_64/aarch64 同为 LP64，类型宽度宏一致，交叉编译扩展时这样做是安全的。
           PYVER=$(python3 -c "import sys; print(f'python{sys.version_info[0]}.{sys.version_info[1]}')")
-          if [ -f "/usr/include/x86_64-linux-gnu/$PYVER/pyconfig.h" ] && \
-             [ ! -f "/usr/include/aarch64-linux-gnu/$PYVER/pyconfig.h" ]; then
-            sudo mkdir -p "/usr/include/aarch64-linux-gnu/$PYVER"
+          if [ -f "/usr/include/x86_64-linux-gnu/$PYVER/pyconfig.h" ]; then
             sudo cp "/usr/include/x86_64-linux-gnu/$PYVER/pyconfig.h" \
-                    "/usr/include/aarch64-linux-gnu/$PYVER/pyconfig.h"
-            echo "Shimmed aarch64-linux-gnu/$PYVER/pyconfig.h"
+                    "/usr/include/$PYVER/pyconfig.h"
+            echo "Replaced multiarch forwarding pyconfig.h with concrete config"
           fi
           {
             echo "HOST_PYTHON_INCLUDE=$HOST_PYTHON_INCLUDE"
