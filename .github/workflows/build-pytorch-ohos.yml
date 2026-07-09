@@ -252,9 +252,32 @@ jobs:
           export OpenBLAS_INCLUDE_DIR=/tmp/openblas-ohos/include
           export OpenBLAS_LIBRARIES=/tmp/openblas-ohos/lib/libopenblas.a
 
+          # 安装 musl aarch64 动态链接器 — QEMU 需要它来运行交叉编译的 host 工具
+          # OHOS sysroot 不包含此文件，从 Alpine aarch64 仓库下载
+          if [ ! -f /lib/ld-musl-aarch64.so.1 ]; then
+            MUSL_URL="https://dl-cdn.alpinelinux.org/alpine/v3.21/main/aarch64/musl-1.2.5-r11.apk"
+            curl -sL -o /tmp/musl.apk "$MUSL_URL" 2>/dev/null || true
+            if [ -f /tmp/musl.apk ]; then
+              mkdir -p /tmp/musl-extract && cd /tmp/musl-extract
+              tar xzf /tmp/musl.apk 2>/dev/null || true
+              # APK 解压后 loader 在 lib/ 下
+              LOADER=$(find . -name "ld-musl-aarch64*" 2>/dev/null | head -1)
+              if [ -n "$LOADER" ] && [ -f "$LOADER" ]; then
+                sudo mkdir -p /lib
+                sudo cp "$LOADER" /lib/ld-musl-aarch64.so.1
+                sudo chmod +x /lib/ld-musl-aarch64.so.1
+                echo "Installed musl loader from Alpine: $(file /lib/ld-musl-aarch64.so.1)"
+              else
+                echo "WARNING: loader not found in APK (files: $(find . -name 'ld*' | head -5))"
+              fi
+              cd "$OLDPWD"
+            fi
+          fi
+          ls -la /lib/ld-musl-aarch64.so.1 2>/dev/null || echo "WARNING: musl loader not available — QEMU will fail!"
+          # 启用 QEMU binfmt
+          sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
+
           # 原生编译 protoc（host x86_64），之后替换掉交叉编译的 aarch64 版本。
-          # aarch64 protoc 无法通过 QEMU 运行（OHOS sysroot 无 musl loader）。
-          echo "=== Building native protoc ==="
           PROTOC_SRC="$(pwd)/third_party/protobuf"
           if [ -f "$PROTOC_SRC/cmake/CMakeLists.txt" ]; then
             mkdir -p /tmp/protoc-native && cd /tmp/protoc-native
