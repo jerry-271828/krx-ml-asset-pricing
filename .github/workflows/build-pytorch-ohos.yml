@@ -118,47 +118,6 @@ jobs:
             NO_AFFINITY=1 USE_OPENMP=0 DYNAMIC_ARCH=0 CROSS=1
           make install PREFIX=/tmp/openblas-ohos NO_SHARED=1 NO_LAPACK=1
 
-      # ---- Native Sleef Tools (cached) ----
-      - name: Restore native sleef cache
-        id: sleef-cache
-        uses: actions/cache@v4
-        with:
-          path: /tmp/sleef-native-install
-          key: sleef-native-${{ inputs.pytorch_ref || 'v2.5.1' }}
-
-      - name: Build native sleef tools (for /bin/mkdisp etc.)
-        if: steps.sleef-cache.outputs.cache-hit != 'true'
-        run: |
-          set -euxo pipefail
-          # sleef src comes from PyTorch checkout — do a quick shallow clone just for sleef
-          SLEEF_COMMIT=56e1f79cb140fb9326d612d0be06b5250565cade
-          git clone --depth 1 https://github.com/shibatch/sleef /tmp/sleef-src 2>/dev/null || true
-          if [ ! -f /tmp/sleef-src/CMakeLists.txt ]; then
-            # fallback: extract from PyTorch repo
-            git clone --depth 1 --filter=blob:none --sparse \
-              https://github.com/pytorch/pytorch /tmp/pytorch-sparse 2>/dev/null || true
-            cd /tmp/pytorch-sparse
-            git sparse-checkout set third_party/sleef 2>/dev/null || true
-            git checkout "refs/tags/${{ inputs.pytorch_ref || 'v2.5.1' }}" 2>/dev/null || \
-              git checkout "refs/heads/main" 2>/dev/null || true
-            cp -r third_party/sleef /tmp/sleef-src 2>/dev/null || true
-          fi
-          mkdir -p /tmp/sleef-native-build && cd /tmp/sleef-native-build
-          CC=gcc CXX=g++ cmake /tmp/sleef-src -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSLEEF_BUILD_GNUABI_LIBS=ON \
-            -DSLEEF_BUILD_TESTS=OFF
-          CC=gcc CXX=g++ ninja -j"$(nproc)" || true
-          # Install tools
-          mkdir -p /tmp/sleef-native-install/bin
-          for tool in mkdisp mkrename mkrename_gnuabi mkalias; do
-            find . -name "$tool" -type f -executable -exec cp {} /tmp/sleef-native-install/bin/ \; 2>/dev/null || true
-          done
-          # If mkalias missing, symlink
-          [ ! -f /tmp/sleef-native-install/bin/mkalias ] && [ -f /tmp/sleef-native-install/bin/mkrename_gnuabi ] && \
-            ln -sf mkrename_gnuabi /tmp/sleef-native-install/bin/mkalias
-          ls -la /tmp/sleef-native-install/bin/
-
 ##############################################################################
 # Job 2: 构建 PyTorch（依赖 Job 1 的缓存）
 ##############################################################################
@@ -209,12 +168,6 @@ jobs:
           path: /tmp/openblas-ohos
           key: openblas-ohos-${{ inputs.openblas_version || '0.3.28' }}
 
-      - name: Restore native sleef cache
-        uses: actions/cache@v4
-        with:
-          path: /tmp/sleef-native-install
-          key: sleef-native-${{ inputs.pytorch_ref || 'v2.5.1' }}
-
       # ---- Setup environment ----
       - name: Setup environment
         run: |
@@ -235,6 +188,33 @@ jobs:
           path: pytorch-src
           submodules: recursive
           fetch-depth: 1
+
+      # ---- Native Sleef Tools (from PyTorch submodule) ----
+      - name: Restore native sleef cache
+        id: sleef-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/sleef-native-install
+          key: sleef-native-${{ inputs.pytorch_ref || 'v2.5.1' }}
+
+      - name: Build native sleef tools
+        if: steps.sleef-cache.outputs.cache-hit != 'true'
+        working-directory: pytorch-src
+        run: |
+          mkdir -p /tmp/sleef-native-build && cd /tmp/sleef-native-build
+          CC=gcc CXX=g++ cmake ../third_party/sleef -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSLEEF_BUILD_GNUABI_LIBS=ON \
+            -DSLEEF_BUILD_TESTS=OFF \
+            -DCMAKE_INSTALL_PREFIX=/tmp/sleef-native-install
+          CC=gcc CXX=g++ ninja -j"$(nproc)" || true
+          mkdir -p /tmp/sleef-native-install/bin
+          for tool in mkdisp mkrename mkrename_gnuabi mkalias; do
+            find . -name "$tool" -type f -executable -exec cp {} /tmp/sleef-native-install/bin/ \; 2>/dev/null || true
+          done
+          [ ! -f /tmp/sleef-native-install/bin/mkalias ] && [ -f /tmp/sleef-native-install/bin/mkrename_gnuabi ] && \
+            ln -sf mkrename_gnuabi /tmp/sleef-native-install/bin/mkalias
+          ls -la /tmp/sleef-native-install/bin/
 
       # ---- Prepare CMake cache + Macros.h patch ----
       - name: Prepare build
