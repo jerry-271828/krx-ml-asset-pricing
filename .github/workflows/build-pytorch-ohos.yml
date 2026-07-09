@@ -483,11 +483,15 @@ jobs:
           # 如果还有其他交叉编译的 host 工具（如 protoc-gen-*），也一并替换
 
           # --- 阶段 2：Ninja 构建 (CPU-only，交叉编译)---
-          cmake --build build -j"$(nproc)" \
+          # cmake --build 在交叉编译场景下不可靠，直接用 ninja
+          # ninja 构建文件在 build/ 下（PyTorch setup.py 默认）
+          JOBS=$(nproc)
+          ninja -C build -j"$JOBS" -k 0 2>&1 | tail -100 \
             || {
-              echo "=== Build failed. Dumping CMake logs ==="
+              echo "=== Build failed (exit $?). Dumping CMake logs ==="
+              # 显示最后 50 个构建行用于诊断
+              ninja -C build -n 2>/dev/null | tail -5 || true
               find build -name "CMakeError.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
-              find build -name "CMakeOutput.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
               exit 1
             }
 
