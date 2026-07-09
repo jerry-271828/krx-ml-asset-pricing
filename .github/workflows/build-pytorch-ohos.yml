@@ -387,10 +387,24 @@ jobs:
             mkdir -p "$HOME/sleef-native/bin"
             find . -name "mkdisp" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
             find . -name "mkrename_gnuabi" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
+            # 将原生工具安装到 /usr/local/bin（ninja 构建 sleef 时需要绝对路径）
+            for tool in mkdisp mkrename_gnuabi mkalias; do
+              if [ -f "$HOME/sleef-native/bin/$tool" ]; then
+                sudo cp "$HOME/sleef-native/bin/$tool" "/usr/local/bin/$tool"
+                sudo chmod +x "/usr/local/bin/$tool"
+                echo "Installed native $tool to /usr/local/bin/$tool"
+              fi
+            done
             echo "Native sleef tools: $(ls $HOME/sleef-native/bin/ 2>/dev/null || echo 'none built')"
             cd "$OLDPWD"
           else
             echo "sleef source not found at $NATIVE_SLEEF_SRC; skipping native tools"
+          fi
+
+          # sleef 交叉编译 hack：ninja 引用绝对路径 /bin/mkdisp
+          # 如果原生工具已安装到 /usr/local/bin，symlink 到 /bin/
+          if [ -f /usr/local/bin/mkdisp ]; then
+            sudo ln -sf /usr/local/bin/mkdisp /bin/mkdisp 2>/dev/null || true
           fi
 
           # --- 构建 PyTorch（CPU-only，交叉编译）---
