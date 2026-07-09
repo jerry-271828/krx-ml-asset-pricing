@@ -369,21 +369,24 @@ jobs:
           # --- 原生编译 sleef host 工具（mkdisp 等代码生成器）---
           # sleef 在交叉编译时需要 host 原生工具来生成 C 代码。
           # 这些工具必须在 host 上编译（用系统 gcc，不用 OHOS clang）。
+          # 注意：CC/CXX 已在上方设为 OHOS 交叉编译器，原生构建前必须 unset。
           echo "=== Building native sleef host tools ==="
           mkdir -p "$HOME/sleef-native"
           NATIVE_SLEEF_SRC="$(pwd)/third_party/sleef"
           if [ -f "$NATIVE_SLEEF_SRC/CMakeLists.txt" ]; then
             mkdir -p /tmp/sleef-native-build && cd /tmp/sleef-native-build
-            # SLEEF_BUILD_GNUABI_LIBS=ON 是必需的：它触发 mkdisp, mkrename_gnuabi 的构建
-            cmake "$NATIVE_SLEEF_SRC" \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_SHARED_LIBS=OFF \
-              -DSLEEF_BUILD_GNUABI_LIBS=ON \
-              -DSLEEF_BUILD_SCALAR_LIB=OFF \
-              -DSLEEF_BUILD_DFT=OFF \
-              -DSLEEF_BUILD_TESTS=OFF \
-              -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
-            make -j"$(nproc)" 2>&1 | tail -10 || true
+            # 使用系统 gcc 构建原生工具（unset 交叉编译器）
+            env -u CC -u CXX -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+              cmake "$NATIVE_SLEEF_SRC" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=OFF \
+                -DSLEEF_BUILD_GNUABI_LIBS=ON \
+                -DSLEEF_BUILD_SCALAR_LIB=OFF \
+                -DSLEEF_BUILD_DFT=OFF \
+                -DSLEEF_BUILD_TESTS=OFF \
+                -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
+            env -u CC -u CXX -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+              make -j"$(nproc)" 2>&1 | tail -10 || true
             # 复制工具到已知位置
             mkdir -p "$HOME/sleef-native/bin"
             find . -name "mkdisp" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
