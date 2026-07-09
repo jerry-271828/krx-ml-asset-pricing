@@ -63,6 +63,21 @@ set(PKG_CONFIG_EXECUTABLE "${OHOS_NATIVE}/llvm/bin/llvm-pkg-config" CACHE FILEPA
 set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH OFF)
 
 # ---- Python for cross-compilation ----
+# find_package(Python COMPONENTS Development.Module) 在交叉模式下会把
+# find_path 重根到 sysroot（CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY），
+# 找不到 host 的 Python.h → Dependencies.cmake 把 BUILD_PYTHON 关掉
+# → torch_python 不构建 → functorch 链接 -ltorch_python 失败。
+# 显式设置 FindPython 的 artifact 缓存变量可完全跳过搜索。
+# Linux 上 Development.Module 只需头文件、不链接 libpython
+# （扩展模块的 Python 符号由解释器在 import 时提供），
+# host 头文件为 LP64，与 aarch64 目标一致，可安全复用。
+if(DEFINED ENV{PYTHON_INCLUDE_DIR})
+  set(Python_INCLUDE_DIR "$ENV{PYTHON_INCLUDE_DIR}" CACHE PATH "Python include dir (host)")
+endif()
+if(DEFINED ENV{NUMPY_INCLUDE_DIR})
+  set(Python_NumPy_INCLUDE_DIR "$ENV{NUMPY_INCLUDE_DIR}" CACHE PATH "NumPy include dir (host)")
+endif()
+
 # pybind11 (bundled with PyTorch) needs Python::Module CMake target.
 # In cross-compilation mode, find_package(Python3) fails to create this target,
 # so we manually create it from environment variables.
