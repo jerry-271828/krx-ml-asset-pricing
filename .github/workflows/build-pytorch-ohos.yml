@@ -224,6 +224,17 @@ jobs:
           HOST_PYTHON_INCLUDE=$(python3 -c "import sysconfig; print(sysconfig.get_path('include'))")
           HOST_NUMPY_INCLUDE=$(python3 -c "import numpy; print(numpy.get_include())")
           TOOLCHAIN_FILE="${{ github.workspace }}/cmake/toolchain-ohos.cmake"
+          # Ubuntu 的 pyconfig.h 按目标架构转发到 <multiarch>/python3.X/pyconfig.h。
+          # 交叉编译 --target=aarch64 时会找 aarch64-linux-gnu 版本，host 上没有。
+          # x86_64/aarch64 同为 LP64，头文件内容一致，复制一份即可。
+          PYVER=$(python3 -c "import sys; print(f'python{sys.version_info[0]}.{sys.version_info[1]}')")
+          if [ -f "/usr/include/x86_64-linux-gnu/$PYVER/pyconfig.h" ] && \
+             [ ! -f "/usr/include/aarch64-linux-gnu/$PYVER/pyconfig.h" ]; then
+            sudo mkdir -p "/usr/include/aarch64-linux-gnu/$PYVER"
+            sudo cp "/usr/include/x86_64-linux-gnu/$PYVER/pyconfig.h" \
+                    "/usr/include/aarch64-linux-gnu/$PYVER/pyconfig.h"
+            echo "Shimmed aarch64-linux-gnu/$PYVER/pyconfig.h"
+          fi
           {
             echo "HOST_PYTHON_INCLUDE=$HOST_PYTHON_INCLUDE"
             echo "HOST_NUMPY_INCLUDE=$HOST_NUMPY_INCLUDE"
