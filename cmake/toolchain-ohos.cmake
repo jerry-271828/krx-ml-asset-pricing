@@ -28,6 +28,7 @@ set(OHOS_TARGET aarch64-linux-ohos)
 # ---- Compiler ----
 set(CMAKE_C_COMPILER    "${OHOS_NATIVE}/llvm/bin/clang"   CACHE FILEPATH "C compiler")
 set(CMAKE_CXX_COMPILER  "${OHOS_NATIVE}/llvm/bin/clang++" CACHE FILEPATH "C++ compiler")
+set(CMAKE_ASM_COMPILER  "${OHOS_NATIVE}/llvm/bin/clang"   CACHE FILEPATH "ASM compiler")
 set(CMAKE_AR            "${OHOS_NATIVE}/llvm/bin/llvm-ar" CACHE FILEPATH "archiver")
 set(CMAKE_RANLIB        "${OHOS_NATIVE}/llvm/bin/llvm-ranlib" CACHE FILEPATH "ranlib")
 set(CMAKE_STRIP         "${OHOS_NATIVE}/llvm/bin/llvm-strip"  CACHE FILEPATH "strip")
@@ -35,6 +36,8 @@ set(CMAKE_STRIP         "${OHOS_NATIVE}/llvm/bin/llvm-strip"  CACHE FILEPATH "st
 # ---- Compiler flags ----
 set(CMAKE_C_FLAGS_INIT   "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -fPIC -D__MUSL__ -D__OHOS__")
 set(CMAKE_CXX_FLAGS_INIT "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -fPIC -D__MUSL__ -D__OHOS__")
+# ASM 也必须带 --target，否则 .S 文件按 host x86_64 汇编（aarch64 指令全部报错）
+set(CMAKE_ASM_FLAGS_INIT "--target=${OHOS_TARGET} --sysroot=${OHOS_SYSROOT} -fPIC")
 
 # Linker: --code-sign embeds the .codesign section required by HarmonyOS kernel.
 # NOTE: PyTorch 构建产物是 Python 扩展 .so，不是独立可执行文件，不需要 -static-pie。
@@ -47,6 +50,7 @@ set(CMAKE_MODULE_LINKER_FLAGS_INIT "--target=${OHOS_TARGET} --sysroot=${OHOS_SYS
 set(CMAKE_CROSSCOMPILING TRUE)
 set(CMAKE_C_COMPILER_TARGET   "${OHOS_TARGET}")
 set(CMAKE_CXX_COMPILER_TARGET "${OHOS_TARGET}")
+set(CMAKE_ASM_COMPILER_TARGET "${OHOS_TARGET}")
 
 # ---- Search paths: only look in sysroot, never in host ----
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)

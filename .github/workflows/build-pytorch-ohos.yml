@@ -35,6 +35,7 @@ env:
   USE_MKLDNN: '0'
   USE_NNPACK: '0'
   USE_QNNPACK: '0'
+  USE_PYTORCH_QNNPACK: '0'
   USE_XNNPACK: '0'
   USE_DISTRIBUTED: '0'
   USE_MPI: '0'
@@ -240,6 +241,8 @@ jobs:
           TARGET_FLAGS="--target=$OHOS_TARGET --sysroot=$OHOS_SYSROOT -fPIC -D__MUSL__ -D__OHOS__"
           export CFLAGS="$TARGET_FLAGS"
           export CXXFLAGS="$TARGET_FLAGS"
+          # ASMFLAGS: CMake 的 ASM 语言不读 CFLAGS，.S 文件必须单独传 --target
+          export ASMFLAGS="--target=$OHOS_TARGET --sysroot=$OHOS_SYSROOT -fPIC"
           export LDFLAGS="--target=$OHOS_TARGET --sysroot=$OHOS_SYSROOT -Wl,--code-sign"
 
           export CMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE"
