@@ -374,15 +374,16 @@ jobs:
           NATIVE_SLEEF_SRC="$(pwd)/third_party/sleef"
           if [ -f "$NATIVE_SLEEF_SRC/CMakeLists.txt" ]; then
             mkdir -p /tmp/sleef-native-build && cd /tmp/sleef-native-build
+            # SLEEF_BUILD_GNUABI_LIBS=ON 是必需的：它触发 mkdisp, mkrename_gnuabi 的构建
             cmake "$NATIVE_SLEEF_SRC" \
               -DCMAKE_BUILD_TYPE=Release \
               -DBUILD_SHARED_LIBS=OFF \
+              -DSLEEF_BUILD_GNUABI_LIBS=ON \
               -DSLEEF_BUILD_SCALAR_LIB=OFF \
               -DSLEEF_BUILD_DFT=OFF \
-              -DSLEEF_BUILD_GNUABI_LIBS=OFF \
               -DSLEEF_BUILD_TESTS=OFF \
               -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
-            make -j"$(nproc)" mkdisp mkrename_gnuabi mkalias 2>/dev/null || make -j1 mkdisp 2>/dev/null || true
+            make -j"$(nproc)" 2>&1 | tail -10 || true
             # 复制工具到已知位置
             mkdir -p "$HOME/sleef-native/bin"
             find . -name "mkdisp" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
