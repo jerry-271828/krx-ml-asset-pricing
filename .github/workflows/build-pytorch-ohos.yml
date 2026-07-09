@@ -252,33 +252,26 @@ jobs:
           export OpenBLAS_INCLUDE_DIR=/tmp/openblas-ohos/include
           export OpenBLAS_LIBRARIES=/tmp/openblas-ohos/lib/libopenblas.a
 
-          # QEMU for aarch64 host tools (protoc etc.)
-          sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
-          # QEMU binfmt 需要找到 musl 动态链接器。直接 symlink 到 /lib/
-          sudo mkdir -p /lib
-          # OHOS sysroot 不包含 musl 动态链接器（ld-musl-aarch64.so.1）。
-          # QEMU 运行 aarch64 二进制时需要它。从 Alpine 下载。
-          if [ ! -f /lib/ld-musl-aarch64.so.1 ]; then
-            echo "Downloading aarch64 musl loader from Alpine..."
-            curl -sL -o /tmp/musl.apk \
-              "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/musl-1.2.5-r8.apk" 2>/dev/null || true
-            if [ -f /tmp/musl.apk ]; then
-              mkdir -p /tmp/musl-extract && cd /tmp/musl-extract
-              tar xzf /tmp/musl.apk 2>/dev/null || true
-              if [ -f lib/ld-musl-aarch64.so.1 ]; then
-                sudo mkdir -p /lib
-                sudo cp lib/ld-musl-aarch64.so.1 /lib/
-                sudo chmod +x /lib/ld-musl-aarch64.so.1
-                echo "Installed musl loader from Alpine"
-              fi
+          # 原生编译 protoc（host x86_64），之后替换掉交叉编译的 aarch64 版本。
+          # aarch64 protoc 无法通过 QEMU 运行（OHOS sysroot 无 musl loader）。
+          echo "=== Building native protoc ==="
+          PROTOC_SRC="$(pwd)/third_party/protobuf"
+          if [ -f "$PROTOC_SRC/cmake/CMakeLists.txt" ]; then
+            mkdir -p /tmp/protoc-native && cd /tmp/protoc-native
+            CC=gcc CXX=g++ cmake "$PROTOC_SRC/cmake" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -Dprotobuf_BUILD_TESTS=OFF \
+              -DCMAKE_INSTALL_PREFIX=/tmp/protoc-install
+            CC=gcc CXX=g++ ninja -j"$(nproc)" protoc 2>&1 | tail -5 || true
+            if [ -f protoc ]; then
+              cp protoc /tmp/protoc-host
+              chmod +x /tmp/protoc-host
+              echo "Native protoc built: $(file /tmp/protoc-host)"
+            else
+              echo "WARNING: protoc native build failed"
             fi
-            # Fallback: try to find loader anywhere in the system
-            if [ ! -f /lib/ld-musl-aarch64.so.1 ]; then
-              FOUND=$(find / -name "ld-musl-aarch64*" 2>/dev/null | head -1)
-              [ -n "$FOUND" ] && sudo cp "$FOUND" /lib/ld-musl-aarch64.so.1 && echo "Found loader at $FOUND"
-            fi
+            cd "$OLDPWD"
           fi
-          ls -la /lib/ld-musl-aarch64.so.1 2>/dev/null || echo "WARNING: musl loader not available"
 
           # Install sleef native tools to /bin/
           if [ -d /tmp/sleef-native-install/bin ]; then
@@ -301,8 +294,25 @@ jobs:
           echo "LDFLAGS=$LDFLAGS"
           echo "TOOLCHAIN=$CMAKE_TOOLCHAIN_FILE"
 
-          # THE MAIN BUILD
-          python3 setup.py build -j"$(nproc)" || {
+          # === Phase 1: CMake configure only ===
+          python3 setup.py build --cmake-only || {
+            echo "=== CMake configure failed ==="
+            find build -name "CMakeError.log" -exec cat {} \; 2>/dev/null
+            exit 1
+          }
+
+          # === Replace aarch64 protoc with native x86_64 build ===
+          # cmake 构建的 protoc 是 aarch64 二进制，QEMU 无法运行（缺 musl loader）
+          PROTOC_BIN="$(pwd)/build/bin/protoc-3.13.0.0"
+          if [ -f /tmp/protoc-host ] && [ -f "$PROTOC_BIN" ]; then
+            cp /tmp/protoc-host "$PROTOC_BIN"
+            echo "Replaced aarch64 protoc with native x86_64 version"
+          elif [ ! -f "$PROTOC_BIN" ]; then
+            echo "protoc not yet built by cmake, will use native if needed"
+          fi
+
+          # === Phase 2: Ninja build (skips already-built aarch64 protoc) ===
+          ninja -C build -j"$(nproc)" || {
             echo "=== Build failed ==="
             find build -name "CMakeError.log" -exec cat {} \; 2>/dev/null
             exit 1
