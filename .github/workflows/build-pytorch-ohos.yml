@@ -286,21 +286,7 @@ jobs:
           fi
 
           # Patch Macros.h for musl __assert_fail
-          # Python 代码缩进必须 > run: | 的内容缩进（10空格），否则 YAML 解析失败
-          python3 << 'PYEOF'
-import re
-f = open('c10/macros/Macros.h', 'r')
-c = f.read()
-f.close()
-pattern = r'    void\n    __assert_fail\(\n        const char\* assertion,\n        const char\* file,\n        unsigned int line,\n        const char\* function\) noexcept __attribute__\(\(__noreturn__\)\);'
-if re.search(pattern, c):
-    guard = '#if !defined(__MUSL__)\n' + pattern + '\n#endif  // !__MUSL__'
-    c2 = re.sub(pattern, guard, c)
-    open('c10/macros/Macros.h', 'w').write(c2)
-    print('Patched Macros.h')
-else:
-    print('Macros.h pattern not found')
-PYEOF
+          python3 "${{ github.workspace }}/scripts/patch-macros-musl.py" c10/macros/Macros.h || echo "Macros.h patch skipped"
 
           pip3 install --break-system-packages -r requirements-build.txt 2>/dev/null || true
 
