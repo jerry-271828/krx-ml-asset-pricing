@@ -310,14 +310,16 @@ jobs:
 
           # === Replace aarch64 protoc with native x86_64 build ===
           # cmake 构建的 protoc 是 aarch64 二进制，QEMU 无法运行（缺 musl loader）
-          PROTOC_BIN="$(pwd)/build/bin/protoc-3.13.0.0"
-          if [ -f /tmp/protoc-host ] && [ -f "$PROTOC_BIN" ]; then
-            cp /tmp/protoc-host "$PROTOC_BIN"
-            # ninja 看到被替换的 protoc 会认为"过期"然后重新链接成 aarch64。
-            # touch 到未来时间，ninja 认为它比所有依赖都新，跳过重建。
-            touch -t 209901010000 "$PROTOC_BIN"
-            chmod +x "$PROTOC_BIN"
-            echo "Replaced protoc with x86_64 version (timestamp frozen to 2099)"
+          # 把 build.ninja 中所有对交叉编译 protoc 的引用替换为原生版本
+          # ninja 会重建 protoc（覆盖我们的替换），所以改 build.ninja 更可靠
+          if [ -f /tmp/protoc-host ]; then
+            cp /tmp/protoc-host "$(pwd)/build/bin/protoc-3.13.0.0" 2>/dev/null || true
+            # 关键：修改 build.ninja，将所有 protoc 路径指向原生版本
+            sed -i "s|$(pwd)/build/bin/protoc-3.13.0.0|/tmp/protoc-host|g" \
+              "$(pwd)/build/build.ninja" 2>/dev/null || true
+            sed -i "s|build/bin/protoc-3.13.0.0|/tmp/protoc-host|g" \
+              "$(pwd)/build/build.ninja" 2>/dev/null || true
+            echo "Patched build.ninja: all protoc → /tmp/protoc-host"
           fi
 
           # === Phase 2: Ninja build (skips already-built aarch64 protoc) ===
