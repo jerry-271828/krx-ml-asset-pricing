@@ -258,11 +258,18 @@ jobs:
           PROTOC_SRC="$(pwd)/third_party/protobuf"
           if [ -f "$PROTOC_SRC/cmake/CMakeLists.txt" ]; then
             mkdir -p /tmp/protoc-native && cd /tmp/protoc-native
-            CC=gcc CXX=g++ cmake "$PROTOC_SRC/cmake" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -Dprotobuf_BUILD_TESTS=OFF \
-              -DCMAKE_INSTALL_PREFIX=/tmp/protoc-install
-            CC=gcc CXX=g++ ninja -j"$(nproc)" protoc 2>&1 | tail -5 || true
+            # 关键：清除所有 OHOS 交叉编译环境变量，否则 gcc 也会被污染
+            env -u CC -u CXX -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+                -u CMAKE_TOOLCHAIN_FILE -u CMAKE_PREFIX_PATH \
+                -u OHOS_NATIVE -u OHOS_SYSROOT \
+              CC=gcc CXX=g++ cmake "$PROTOC_SRC/cmake" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=gcc \
+                -DCMAKE_CXX_COMPILER=g++ \
+                -Dprotobuf_BUILD_TESTS=OFF \
+                -DCMAKE_INSTALL_PREFIX=/tmp/protoc-install
+            env -u CC -u CXX -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+              CC=gcc CXX=g++ ninja -j"$(nproc)" protoc 2>&1 | tail -5 || true
             if [ -f protoc ]; then
               cp protoc /tmp/protoc-host
               chmod +x /tmp/protoc-host
