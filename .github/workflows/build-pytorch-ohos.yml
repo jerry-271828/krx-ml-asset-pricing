@@ -319,7 +319,7 @@ jobs:
       - name: Build PyTorch
         working-directory: pytorch-src
         run: |
-          set -xo pipefail
+          set +e -xo pipefail  # +e: GitHub Actions 默认 bash -e，必须显式关闭
 
           # 交叉编译器（ccache 前缀加速重复编译）
           export CC="ccache $OHOS_NATIVE/llvm/bin/clang"
