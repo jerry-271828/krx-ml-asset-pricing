@@ -393,11 +393,16 @@ jobs:
                 -DSLEEF_BUILD_TESTS=OFF \
                 -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
             env -u CFLAGS -u CXXFLAGS -u LDFLAGS \
-              CC=gcc CXX=g++ ninja -j"$(nproc)" -v 2>&1 | tail -20 || true
-            # 复制工具到已知位置
+              CC=gcc CXX=g++ ninja -j"$(nproc)" -v 2>&1 | tail -30 || true
+            # 复制所有可能的工具
             mkdir -p "$HOME/sleef-native/bin"
-            find . -name "mkdisp" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
-            find . -name "mkrename_gnuabi" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
+            for tool in mkdisp mkrename mkrename_gnuabi mkalias; do
+              find . -name "$tool" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
+            done
+            # 如果按名称找不到，尝试在常见路径搜索
+            find src -name "mk*" -type f -executable 2>/dev/null | while read f; do
+              cp "$f" "$HOME/sleef-native/bin/$(basename $f)" 2>/dev/null || true
+            done
             # 将原生工具安装到 /usr/local/bin（ninja 构建 sleef 时需要绝对路径）
             for tool in mkdisp mkrename_gnuabi mkalias; do
               if [ -f "$HOME/sleef-native/bin/$tool" ]; then
