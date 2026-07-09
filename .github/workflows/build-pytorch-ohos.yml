@@ -486,11 +486,16 @@ jobs:
           # cmake --build 在交叉编译场景下不可靠，直接用 ninja
           # ninja 构建文件在 build/ 下（PyTorch setup.py 默认）
           JOBS=$(nproc)
-          ninja -C build -j"$JOBS" -k 0 2>&1 | tail -100 \
+          # 不加 tail 过滤，让错误在 GitHub log 中可见
+          ninja -C build -j"$JOBS" -k 0 \
             || {
-              echo "=== Build failed (exit $?). Dumping CMake logs ==="
-              # 显示最后 50 个构建行用于诊断
-              ninja -C build -n 2>/dev/null | tail -5 || true
+              NINJA_EXIT=$?
+              echo "=== Build failed (exit $NINJA_EXIT). Dumping info ==="
+              # 显示 ninja 构建状态
+              ninja -C build -n 2>/dev/null | tail -10 || true
+              # 检查 build.ninja 是否存在
+              ls -la build/build.ninja 2>/dev/null || echo "build.ninja not found!"
+              # CMake 错误日志
               find build -name "CMakeError.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
               exit 1
             }
