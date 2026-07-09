@@ -199,10 +199,10 @@ jobs:
 
       - name: Build native sleef tools
         if: steps.sleef-cache.outputs.cache-hit != 'true'
-        working-directory: pytorch-src
         run: |
+          SLEEF_SRC="${{ github.workspace }}/pytorch-src/third_party/sleef"
           mkdir -p /tmp/sleef-native-build && cd /tmp/sleef-native-build
-          CC=gcc CXX=g++ cmake ../third_party/sleef -G Ninja \
+          CC=gcc CXX=g++ cmake "$SLEEF_SRC" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DSLEEF_BUILD_GNUABI_LIBS=ON \
             -DSLEEF_BUILD_TESTS=OFF \
