@@ -256,16 +256,18 @@ jobs:
           sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
           # QEMU binfmt 需要找到 musl 动态链接器。直接 symlink 到 /lib/
           sudo mkdir -p /lib
-          # 诊断：sysroot 中有哪些 loader 文件
-          echo "=== Loaders in sysroot ==="
-          find "$OHOS_SYSROOT" -name "ld-*" -o -name "ld.so*" -o -name "ld-musl*" 2>/dev/null | head -10
-          echo "=== lib/ contents ==="
-          ls "$OHOS_SYSROOT/lib/" 2>/dev/null | head -20 || echo "no lib/ dir"
-          echo "=== /lib in sysroot ==="
-          ls "$OHOS_SYSROOT/lib/" 2>/dev/null | grep ld || echo "no ld files"
-          # 允许 QEMU 找到 musl loader
-          sudo ln -sf "$OHOS_SYSROOT/lib/ld-musl-aarch64.so.1" /lib/ld-musl-aarch64.so.1 2>/dev/null || true
-          ls -la /lib/ld-musl* 2>/dev/null || echo "ld-musl symlink not created"
+          # 在 sysroot 中找 musl 动态链接器
+          echo "=== Sysroot structure ==="
+          ls -d "$OHOS_SYSROOT"/lib* "$OHOS_SYSROOT"/usr/lib* 2>/dev/null || true
+          LOADER=$(find "$OHOS_SYSROOT" -name "ld-musl*" -o -name "ld-linux*" 2>/dev/null | head -1)
+          echo "Found loader: $LOADER"
+          if [ -n "$LOADER" ]; then
+            sudo mkdir -p /lib
+            sudo ln -sf "$LOADER" /lib/ld-musl-aarch64.so.1 2>/dev/null || true
+            ls -la /lib/ld-musl* 2>/dev/null || true
+          else
+            echo "WARNING: No dynamic linker found in sysroot - QEMU protoc will fail!"
+          fi
 
           # Install sleef native tools to /bin/
           if [ -d /tmp/sleef-native-install/bin ]; then
