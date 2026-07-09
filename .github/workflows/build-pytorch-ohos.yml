@@ -369,14 +369,22 @@ jobs:
           export PROTOBUF_PROTOC_EXECUTABLE=/usr/bin/protoc
           echo "Using host protoc: $(which protoc || echo 'not found')"
 
-          # OHOS musl sysroot 的 __assert_fail 声明与 PyTorch Macros.h 冲突：
-          # musl uses:  void __assert_fail(const char*, const char*, int, const char*)
-          # PyTorch expects: void __assert_fail(...) noexcept __attribute__((__noreturn__))
-          # Fix: patch sysroot's assert.h to match PyTorch (unsigned int line)
-          # 如果 sysroot 不可写，用 -include 注入兼容声明
-          if [ -w "$OHOS_SYSROOT/usr/include/assert.h" ]; then
-            sudo sed -i 's/__assert_fail(const char \*, const char \*, int,/__assert_fail(const char *, const char *, unsigned int,/g' \
-              "$OHOS_SYSROOT/usr/include/assert.h" 2>/dev/null || true
+          # OHOS musl sysroot 的 <assert.h> 总是声明 __assert_fail（C 函数，无 noexcept），
+          # 而 PyTorch Macros.h 重声明时会加上 noexcept，导致 exception specification mismatch。
+          # 修复：保护 PyTorch 的重声明，在 musl 上跳过它。
+          MACROS_H="$(pwd)/c10/macros/Macros.h"
+          if [ -f "$MACROS_H" ] && grep -q '__assert_fail' "$MACROS_H" 2>/dev/null; then
+            # 在 __assert_fail 声明行前插入 #if !defined(__MUSL__)
+            LINE=$(grep -n 'void$' "$MACROS_H" | grep -A 10 '__assert_fail' | head -1 | cut -d: -f1)
+            if [ -n "$LINE" ]; then
+              sed -i "${LINE}i #if !defined(__MUSL__)" "$MACROS_H"
+            fi
+            # 在 noexcept __attribute__((__noreturn__)); 行后插入 #endif
+            ENDLINE=$(grep -n 'noexcept __attribute__((__noreturn__));' "$MACROS_H" | head -1 | cut -d: -f1)
+            if [ -n "$ENDLINE" ]; then
+              sed -i "${ENDLINE}a #endif  // !__MUSL__" "$MACROS_H"
+              echo "Patched Macros.h: wrapped __assert_fail with !__MUSL__ guard"
+            fi
           fi
 
           # 安装 PyTorch 构建期 Python 依赖
@@ -453,9 +461,29 @@ jobs:
             fi
           done
 
-          # --- 构建 PyTorch（CPU-only，交叉编译）---
-          # 不使用 --cmake 标志（它只是 RERUN_CMAKE 布尔值）
-          python3 setup.py build -j"$(nproc)" \
+          # --- 阶段 1：配置 CMake（--cmake-only 配置完就退出）---
+          # 使用 --cmake-only 而不是 --cmake（后者只是 RERUN_CMAKE 布尔值）
+          python3 setup.py build --cmake-only \
+            || {
+              echo "=== CMake configure failed. Dumping logs ==="
+              find build -name "CMakeError.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
+              exit 1
+            }
+
+          # --- 替换交叉编译的 host 工具为原生版本 ---
+          # protoc 被交叉编译成了 aarch64 二进制，无法在 x86_64 host 上运行。
+          # 替换为系统原生 protoc。
+          PROTOC_BAD="$(pwd)/build/bin/protoc-3.13.0.0"
+          if [ -f "$PROTOC_BAD" ] && [ -x /usr/bin/protoc ]; then
+            rm -f "$PROTOC_BAD"
+            cp /usr/bin/protoc "$PROTOC_BAD"
+            echo "Replaced cross-compiled protoc with host protoc"
+          fi
+          # sleef 工具同理 — 已在前面 symlink 到 /bin/
+          # 如果还有其他交叉编译的 host 工具（如 protoc-gen-*），也一并替换
+
+          # --- 阶段 2：Ninja 构建 (CPU-only，交叉编译)---
+          cmake --build build -j"$(nproc)" \
             || {
               echo "=== Build failed. Dumping CMake logs ==="
               find build -name "CMakeError.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
