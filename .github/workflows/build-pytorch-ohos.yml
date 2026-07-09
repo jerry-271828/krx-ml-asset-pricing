@@ -94,7 +94,7 @@ jobs:
           sudo apt-get install -y \
             cmake ninja-build pkg-config curl unzip \
             python3 python3-pip python3-venv python3-dev \
-            ccache patchelf \
+            ccache patchelf qemu-user-static \
             # PyTorch 源码中的 Python 代码生成器需要这些包（在宿主编译环境上运行）
           pip3 install --break-system-packages \
             numpy pyyaml typing_extensions setuptools wheel \
@@ -363,140 +363,33 @@ jobs:
           echo "CMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE"
           echo "CMAKE_SYSROOT=$OHOS_SYSROOT"
 
-          # 安装系统 protoc（PyTorch 交叉编译时需要 host 原生 protoc）
-          # 交叉编译的 protoc 是 aarch64 二进制，无法在 x86_64 host 上运行
-          sudo apt-get install -y protobuf-compiler 2>/dev/null || true
-          export PROTOBUF_PROTOC_EXECUTABLE=/usr/bin/protoc
-          echo "Using host protoc: $(which protoc || echo 'not found')"
+          # qemu-user-static: 让交叉编译的 aarch64 host 工具（protoc, mkdisp, mkrename 等）
+          # 在 x86_64 CI runner 上通过 QEMU 自动模拟执行，无需单独构建原生版本。
+          sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
+          echo "QEMU binfmt: $(ls /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null || echo 'not found')"
 
-          # OHOS musl sysroot 的 <assert.h> 总是声明 __assert_fail（C 函数，无 noexcept），
-          # 而 PyTorch Macros.h 重声明时会加上 noexcept，导致 exception specification mismatch。
-          # 修复：保护 PyTorch 的重声明，在 musl 上跳过它。
+          # musl <assert.h> 声明 __assert_fail 为 C 函数（无 noexcept），
+          # PyTorch Macros.h 重声明加了 noexcept → exception specification mismatch。
+          # 用 !__MUSL__ guard 保护 PyTorch 的声明。
           MACROS_H="$(pwd)/c10/macros/Macros.h"
           if [ -f "$MACROS_H" ] && grep -q '__assert_fail' "$MACROS_H" 2>/dev/null; then
-            # 在 __assert_fail 声明行前插入 #if !defined(__MUSL__)
             LINE=$(grep -n 'void$' "$MACROS_H" | grep -A 10 '__assert_fail' | head -1 | cut -d: -f1)
-            if [ -n "$LINE" ]; then
-              sed -i "${LINE}i #if !defined(__MUSL__)" "$MACROS_H"
-            fi
-            # 在 noexcept __attribute__((__noreturn__)); 行后插入 #endif
+            [ -n "$LINE" ] && sed -i "${LINE}i #if !defined(__MUSL__)" "$MACROS_H"
             ENDLINE=$(grep -n 'noexcept __attribute__((__noreturn__));' "$MACROS_H" | head -1 | cut -d: -f1)
-            if [ -n "$ENDLINE" ]; then
-              sed -i "${ENDLINE}a #endif  // !__MUSL__" "$MACROS_H"
-              echo "Patched Macros.h: wrapped __assert_fail with !__MUSL__ guard"
-            fi
+            [ -n "$ENDLINE" ] && sed -i "${ENDLINE}a #endif  // !__MUSL__" "$MACROS_H" && echo "Patched Macros.h for musl"
           fi
 
           # 安装 PyTorch 构建期 Python 依赖
           pip3 install --break-system-packages -r requirements-build.txt 2>/dev/null || true
 
-          # --- 原生编译 sleef host 工具（mkdisp 等代码生成器）---
-          # sleef 在交叉编译时需要 host 原生工具来生成 C 代码。
-          # 这些工具必须在 host 上编译（用系统 gcc，不用 OHOS clang）。
-          # 注意：CC/CXX 已在上方设为 OHOS 交叉编译器，原生构建前必须 unset。
-          echo "=== Building native sleef host tools ==="
-          mkdir -p "$HOME/sleef-native"
-          NATIVE_SLEEF_SRC="$(pwd)/third_party/sleef"
-          if [ -f "$NATIVE_SLEEF_SRC/CMakeLists.txt" ]; then
-            mkdir -p /tmp/sleef-native-build && cd /tmp/sleef-native-build
-            # 使用系统 gcc 构建原生工具
-            # 关键：必须彻底清除 OHOS 交叉编译环境（编译器、标志、工具链文件），
-            # 否则系统 gcc 也会被注入 --target=aarch64-linux-ohos 等标志。
-            CC=gcc CXX=g++ \
-            env -u CFLAGS -u CXXFLAGS -u LDFLAGS \
-                -u CMAKE_TOOLCHAIN_FILE -u CMAKE_PREFIX_PATH \
-                -u OHOS_NATIVE -u OHOS_SYSROOT \
-              cmake "$NATIVE_SLEEF_SRC" \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_C_COMPILER=gcc \
-                -DCMAKE_CXX_COMPILER=g++ \
-                -DSLEEF_BUILD_GNUABI_LIBS=ON \
-                -DSLEEF_BUILD_TESTS=OFF \
-                -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
-            env -u CFLAGS -u CXXFLAGS -u LDFLAGS \
-              CC=gcc CXX=g++ ninja -j"$(nproc)" -v 2>&1 | tail -30 || true
-            # 复制所有可能的工具
-            mkdir -p "$HOME/sleef-native/bin"
-            for tool in mkdisp mkrename mkrename_gnuabi mkalias; do
-              find . -name "$tool" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
-            done
-            # 如果按名称找不到，尝试在常见路径搜索
-            find src -name "mk*" -type f -executable 2>/dev/null | while read f; do
-              cp "$f" "$HOME/sleef-native/bin/$(basename $f)" 2>/dev/null || true
-            done
-            # 将原生工具安装到 /usr/local/bin（ninja 构建 sleef 时需要绝对路径）
-            for tool in mkdisp mkrename_gnuabi mkalias; do
-              if [ -f "$HOME/sleef-native/bin/$tool" ]; then
-                sudo cp "$HOME/sleef-native/bin/$tool" "/usr/local/bin/$tool"
-                sudo chmod +x "/usr/local/bin/$tool"
-                echo "Installed native $tool to /usr/local/bin/$tool"
-              fi
-            done
-            echo "Native sleef tools: $(ls $HOME/sleef-native/bin/ 2>/dev/null || echo 'none built')"
-            cd "$OLDPWD"
-          else
-            echo "sleef source not found at $NATIVE_SLEEF_SRC; skipping native tools"
-          fi
-
-          # sleef 交叉编译 hack：ninja 引用绝对路径 /bin/mkdisp, /bin/mkrename, /bin/mkalias
-          # 如果 mkalias 没有被原生构建（sleef 的 add_host_executable 限制），
-          # 回退到 symlink mkrename_gnuabi → mkalias（必须在 for 循环之前）
-          if [ ! -f /usr/local/bin/mkalias ] && [ ! -f "$HOME/sleef-native/bin/mkalias" ]; then
-            if [ -f /usr/local/bin/mkrename_gnuabi ]; then
-              sudo ln -sf /usr/local/bin/mkrename_gnuabi /usr/local/bin/mkalias 2>/dev/null || true
-              echo "Fallback: mkrename_gnuabi → /usr/local/bin/mkalias"
-            elif [ -f "$HOME/sleef-native/bin/mkrename_gnuabi" ]; then
-              sudo ln -sf "$HOME/sleef-native/bin/mkrename_gnuabi" /usr/local/bin/mkalias 2>/dev/null || true
-              echo "Fallback: sleef-native/mkrename_gnuabi → /usr/local/bin/mkalias"
-            fi
-          fi
-          # 将原生工具 symlink 到 /bin/ 满足 ninja 依赖
-          for tool in mkdisp mkrename mkalias mkrename_gnuabi; do
-            src=""
-            [ -f "/usr/local/bin/$tool" ] && src="/usr/local/bin/$tool"
-            [ -z "$src" ] && [ -f "$HOME/sleef-native/bin/$tool" ] && src="$HOME/sleef-native/bin/$tool"
-            if [ -n "$src" ]; then
-              sudo ln -sf "$src" "/bin/${tool%_gnuabi}" 2>/dev/null || true
-              echo "Linked $src → /bin/${tool%_gnuabi}"
-            fi
-          done
-
-          # --- 阶段 1：配置 CMake（--cmake-only 配置完就退出）---
-          # 使用 --cmake-only 而不是 --cmake（后者只是 RERUN_CMAKE 布尔值）
-          python3 setup.py build --cmake-only \
+          # --- 构建 PyTorch（CPU-only，交叉编译）---
+          # 使用 setup.py 的官方构建入口（cmake 环境变量在上面已设置好）。
+          # aarch64 的 host 工具（protoc, mkdisp 等）由 QEMU 自动模拟。
+          python3 setup.py build -j"$(nproc)" \
             || {
-              echo "=== CMake configure failed. Dumping logs ==="
+              echo "=== Build failed. Dumping CMake logs ==="
               find build -name "CMakeError.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
-              exit 1
-            }
-
-          # --- 替换交叉编译的 host 工具为原生版本 ---
-          # protoc 被交叉编译成了 aarch64 二进制，无法在 x86_64 host 上运行。
-          # 替换为系统原生 protoc。
-          PROTOC_BAD="$(pwd)/build/bin/protoc-3.13.0.0"
-          if [ -f "$PROTOC_BAD" ] && [ -x /usr/bin/protoc ]; then
-            rm -f "$PROTOC_BAD"
-            cp /usr/bin/protoc "$PROTOC_BAD"
-            echo "Replaced cross-compiled protoc with host protoc"
-          fi
-          # sleef 工具同理 — 已在前面 symlink 到 /bin/
-          # 如果还有其他交叉编译的 host 工具（如 protoc-gen-*），也一并替换
-
-          # --- 阶段 2：Ninja 构建 (CPU-only，交叉编译)---
-          # cmake --build 在交叉编译场景下不可靠，直接用 ninja
-          # ninja 构建文件在 build/ 下（PyTorch setup.py 默认）
-          JOBS=$(nproc)
-          # 不加 tail 过滤，让错误在 GitHub log 中可见
-          ninja -C build -j"$JOBS" -k 0 \
-            || {
-              NINJA_EXIT=$?
-              echo "=== Build failed (exit $NINJA_EXIT). Dumping info ==="
-              # 显示 ninja 构建状态
-              ninja -C build -n 2>/dev/null | tail -10 || true
-              # 检查 build.ninja 是否存在
-              ls -la build/build.ninja 2>/dev/null || echo "build.ninja not found!"
-              # CMake 错误日志
-              find build -name "CMakeError.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
+              find build -name "CMakeOutput.log" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
               exit 1
             }
 
