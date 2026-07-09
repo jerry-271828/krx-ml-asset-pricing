@@ -313,9 +313,11 @@ jobs:
           PROTOC_BIN="$(pwd)/build/bin/protoc-3.13.0.0"
           if [ -f /tmp/protoc-host ] && [ -f "$PROTOC_BIN" ]; then
             cp /tmp/protoc-host "$PROTOC_BIN"
-            echo "Replaced aarch64 protoc with native x86_64 version"
-          elif [ ! -f "$PROTOC_BIN" ]; then
-            echo "protoc not yet built by cmake, will use native if needed"
+            # ninja 看到被替换的 protoc 会认为"过期"然后重新链接成 aarch64。
+            # touch 到未来时间，ninja 认为它比所有依赖都新，跳过重建。
+            touch -t 209901010000 "$PROTOC_BIN"
+            chmod +x "$PROTOC_BIN"
+            echo "Replaced protoc with x86_64 version (timestamp frozen to 2099)"
           fi
 
           # === Phase 2: Ninja build (skips already-built aarch64 protoc) ===
