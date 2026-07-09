@@ -363,6 +363,22 @@ jobs:
           echo "CMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE"
           echo "CMAKE_SYSROOT=$OHOS_SYSROOT"
 
+          # 安装系统 protoc（PyTorch 交叉编译时需要 host 原生 protoc）
+          # 交叉编译的 protoc 是 aarch64 二进制，无法在 x86_64 host 上运行
+          sudo apt-get install -y protobuf-compiler 2>/dev/null || true
+          export PROTOBUF_PROTOC_EXECUTABLE=/usr/bin/protoc
+          echo "Using host protoc: $(which protoc || echo 'not found')"
+
+          # OHOS musl sysroot 的 __assert_fail 声明与 PyTorch Macros.h 冲突：
+          # musl uses:  void __assert_fail(const char*, const char*, int, const char*)
+          # PyTorch expects: void __assert_fail(...) noexcept __attribute__((__noreturn__))
+          # Fix: patch sysroot's assert.h to match PyTorch (unsigned int line)
+          # 如果 sysroot 不可写，用 -include 注入兼容声明
+          if [ -w "$OHOS_SYSROOT/usr/include/assert.h" ]; then
+            sudo sed -i 's/__assert_fail(const char \*, const char \*, int,/__assert_fail(const char *, const char *, unsigned int,/g' \
+              "$OHOS_SYSROOT/usr/include/assert.h" 2>/dev/null || true
+          fi
+
           # 安装 PyTorch 构建期 Python 依赖
           pip3 install --break-system-packages -r requirements-build.txt 2>/dev/null || true
 
