@@ -293,7 +293,20 @@ jobs:
           endif()
 
           # === Python (host paths are arch-independent C headers) ===
-          # These get passed via --cmake flags, not here
+          # pybind11 需要 Python::Module 这个 CMake imported target
+          # 交叉编译时 find_package(Python3) 默认不创建它，手动创建
+          if(NOT TARGET Python::Module)
+            add_library(Python::Module INTERFACE IMPORTED)
+            set_target_properties(Python::Module PROPERTIES
+              INTERFACE_INCLUDE_DIRECTORIES "$ENV{HOST_PYTHON_INCLUDE}"
+            )
+          endif()
+          if(NOT TARGET Python::Python)
+            add_library(Python::Python INTERFACE IMPORTED)
+            set_target_properties(Python::Python PROPERTIES
+              INTERFACE_INCLUDE_DIRECTORIES "$ENV{HOST_PYTHON_INCLUDE}"
+            )
+          endif()
           CMAKE_EOF
 
           echo "[OK] CMake preload file written to /tmp/cmake-preload-ohos.cmake"
