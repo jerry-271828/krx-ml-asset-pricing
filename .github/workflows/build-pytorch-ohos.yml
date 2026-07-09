@@ -303,14 +303,27 @@ jobs:
             cd "$OLDPWD"
           fi
 
-          # Install sleef native tools to /bin/
+          # Install sleef native tools (mkdisp, mkalias) — native build works for these
+          # 但 mkrename 必须用交叉编译的 aarch64 版本（QEMU 运行），
+          # 因为原生 mkrename_gnuabi 的参数格式与交叉编译版不兼容
           if [ -d /tmp/sleef-native-install/bin ]; then
-            for tool in /tmp/sleef-native-install/bin/*; do
-              name=$(basename "$tool")
-              sudo cp "$tool" "/usr/local/bin/$name" 2>/dev/null || true
+            for f in /tmp/sleef-native-install/bin/*; do
+              name=$(basename "$f")
+              if [ "$name" = "mkrename_gnuabi" ]; then
+                continue  # skip — 等交叉编译版用 QEMU 跑
+              fi
+              sudo cp "$f" "/usr/local/bin/$name" 2>/dev/null || true
               sudo ln -sf "/usr/local/bin/$name" "/bin/${name%_gnuabi}" 2>/dev/null || true
               echo "Installed sleef tool: $name"
             done
+          fi
+
+          # 交叉编译的 sleef 工具（aarch64）构建后，symlink 到 /bin/
+          # QEMU + musl loader 会透明执行它们
+          CMAKE_SLEEF_BIN="$(pwd)/build/sleef/src/libm"
+          if [ -f "$CMAKE_SLEEF_BIN/mkrename" ]; then
+            sudo ln -sf "$CMAKE_SLEEF_BIN/mkrename" /bin/mkrename 2>/dev/null || true
+            echo "Linked cross-compiled mkrename (aarch64 via QEMU)"
           fi
 
           # Patch Macros.h for musl __assert_fail
@@ -354,6 +367,14 @@ jobs:
 
           echo "=== Build complete ==="
           ccache -s || true
+
+      # ---- Save ccache (even on failure, so next run is faster) ----
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/ccache
+          key: ccache-pytorch-ohos-${{ inputs.pytorch_ref || 'v2.5.1' }}-${{ github.run_id }}
 
       # ---- Sign + Verify + Package ----
       - name: Verify code signatures
