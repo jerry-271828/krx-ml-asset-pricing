@@ -376,10 +376,12 @@ jobs:
           if [ -f "$NATIVE_SLEEF_SRC/CMakeLists.txt" ]; then
             mkdir -p /tmp/sleef-native-build && cd /tmp/sleef-native-build
             # 使用系统 gcc 构建原生工具
-            # 关键：必须 unset CMAKE_TOOLCHAIN_FILE、OHOS_NATIVE、OHOS_SYSROOT，
-            # 否则 OHOS toolchain 会错误地覆盖原生 cmake 的编译器设置。
+            # 关键：必须彻底清除 OHOS 交叉编译环境（编译器、标志、工具链文件），
+            # 否则系统 gcc 也会被注入 --target=aarch64-linux-ohos 等标志。
             CC=gcc CXX=g++ \
-            env -u CMAKE_TOOLCHAIN_FILE -u OHOS_NATIVE -u OHOS_SYSROOT \
+            env -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+                -u CMAKE_TOOLCHAIN_FILE -u CMAKE_PREFIX_PATH \
+                -u OHOS_NATIVE -u OHOS_SYSROOT \
               cmake "$NATIVE_SLEEF_SRC" \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_C_COMPILER=gcc \
@@ -390,7 +392,8 @@ jobs:
                 -DSLEEF_BUILD_DFT=OFF \
                 -DSLEEF_BUILD_TESTS=OFF \
                 -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
-            CC=gcc CXX=g++ make -j"$(nproc)" VERBOSE=1 2>&1 | tail -20 || true
+            env -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+              CC=gcc CXX=g++ make -j"$(nproc)" VERBOSE=1 2>&1 | tail -20 || true
             # 复制工具到已知位置
             mkdir -p "$HOME/sleef-native/bin"
             find . -name "mkdisp" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
