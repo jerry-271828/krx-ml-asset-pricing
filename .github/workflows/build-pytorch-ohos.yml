@@ -412,10 +412,21 @@ jobs:
             echo "sleef source not found at $NATIVE_SLEEF_SRC; skipping native tools"
           fi
 
-          # sleef 交叉编译 hack：ninja 引用绝对路径 /bin/mkdisp
-          # 如果原生工具已安装到 /usr/local/bin，symlink 到 /bin/
-          if [ -f /usr/local/bin/mkdisp ]; then
-            sudo ln -sf /usr/local/bin/mkdisp /bin/mkdisp 2>/dev/null || true
+          # sleef 交叉编译 hack：ninja 引用绝对路径 /bin/mkdisp, /bin/mkrename, /bin/mkalias
+          # 将原生工具 symlink 到 /bin/ 满足 ninja 依赖
+          for tool in mkdisp mkrename mkalias mkrename_gnuabi; do
+            src=""
+            [ -f "/usr/local/bin/$tool" ] && src="/usr/local/bin/$tool"
+            [ -z "$src" ] && [ -f "$HOME/sleef-native/bin/$tool" ] && src="$HOME/sleef-native/bin/$tool"
+            if [ -n "$src" ]; then
+              sudo ln -sf "$src" "/bin/${tool%_gnuabi}" 2>/dev/null || true
+              echo "Linked $src → /bin/${tool%_gnuabi}"
+            fi
+          done
+          # Also try mkrename → mkrename_gnuabi if only the latter exists
+          if [ ! -f /bin/mkrename ] && [ -f /usr/local/bin/mkrename_gnuabi ]; then
+            sudo ln -sf /usr/local/bin/mkrename_gnuabi /bin/mkrename 2>/dev/null || true
+            echo "Linked mkrename_gnuabi → /bin/mkrename"
           fi
 
           # --- 构建 PyTorch（CPU-only，交叉编译）---
