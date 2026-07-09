@@ -380,6 +380,9 @@ jobs:
           # --- 构建 PyTorch（CPU-only，交叉编译）---
           # 使用 setup.py 的官方构建入口（cmake 环境变量在上面已设置好）。
           # aarch64 的 host 工具（protoc, mkdisp 等）由 QEMU 自动模拟。
+          echo "Working directory: $(pwd)"
+          echo "setup.py exists: $(test -f setup.py && echo YES || echo NO)"
+          echo "Python: $(python3 --version)"
           python3 setup.py build -j"$(nproc)" \
             || {
               echo "=== Build failed. Dumping CMake logs ==="
