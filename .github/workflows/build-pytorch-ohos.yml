@@ -319,7 +319,7 @@ jobs:
       - name: Build PyTorch
         working-directory: pytorch-src
         run: |
-          set -euxo pipefail
+          set -uxo pipefail  # 不用 -e：手动处理错误便于诊断
 
           # 交叉编译器（ccache 前缀加速重复编译）
           export CC="ccache $OHOS_NATIVE/llvm/bin/clang"
