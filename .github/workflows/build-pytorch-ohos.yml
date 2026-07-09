@@ -254,6 +254,8 @@ jobs:
 
           # QEMU for aarch64 host tools (protoc etc.)
           sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
+          # 关键：QEMU 需要知道 OHOS sysroot 路径来找到 musl 动态链接器
+          export QEMU_LD_PREFIX="$OHOS_SYSROOT"
 
           # Install sleef native tools to /bin/
           if [ -d /tmp/sleef-native-install/bin ]; then
