@@ -415,6 +415,17 @@ jobs:
           fi
 
           # sleef 交叉编译 hack：ninja 引用绝对路径 /bin/mkdisp, /bin/mkrename, /bin/mkalias
+          # 如果 mkalias 没有被原生构建（sleef 的 add_host_executable 限制），
+          # 回退到 symlink mkrename_gnuabi → mkalias（必须在 for 循环之前）
+          if [ ! -f /usr/local/bin/mkalias ] && [ ! -f "$HOME/sleef-native/bin/mkalias" ]; then
+            if [ -f /usr/local/bin/mkrename_gnuabi ]; then
+              sudo ln -sf /usr/local/bin/mkrename_gnuabi /usr/local/bin/mkalias 2>/dev/null || true
+              echo "Fallback: mkrename_gnuabi → /usr/local/bin/mkalias"
+            elif [ -f "$HOME/sleef-native/bin/mkrename_gnuabi" ]; then
+              sudo ln -sf "$HOME/sleef-native/bin/mkrename_gnuabi" /usr/local/bin/mkalias 2>/dev/null || true
+              echo "Fallback: sleef-native/mkrename_gnuabi → /usr/local/bin/mkalias"
+            fi
+          fi
           # 将原生工具 symlink 到 /bin/ 满足 ninja 依赖
           for tool in mkdisp mkrename mkalias mkrename_gnuabi; do
             src=""
@@ -425,11 +436,6 @@ jobs:
               echo "Linked $src → /bin/${tool%_gnuabi}"
             fi
           done
-          # Also try mkrename → mkrename_gnuabi if only the latter exists
-          if [ ! -f /bin/mkrename ] && [ -f /usr/local/bin/mkrename_gnuabi ]; then
-            sudo ln -sf /usr/local/bin/mkrename_gnuabi /bin/mkrename 2>/dev/null || true
-            echo "Linked mkrename_gnuabi → /bin/mkrename"
-          fi
 
           # --- 构建 PyTorch（CPU-only，交叉编译）---
           # 不使用 --cmake 标志（它只是 RERUN_CMAKE 布尔值）
