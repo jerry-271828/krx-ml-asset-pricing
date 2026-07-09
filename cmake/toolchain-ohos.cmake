@@ -58,6 +58,24 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 set(PKG_CONFIG_EXECUTABLE "${OHOS_NATIVE}/llvm/bin/llvm-pkg-config" CACHE FILEPATH "pkg-config")
 set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH OFF)
 
+# ---- Python for cross-compilation ----
+# pybind11 (bundled with PyTorch) needs Python::Module CMake target.
+# In cross-compilation mode, find_package(Python3) fails to create this target,
+# so we manually create it from environment variables.
+# PYTHON_INCLUDE_DIR and NUMPY_INCLUDE_DIR are set as shell env vars
+# by the CI workflow before invoking setup.py.
+if(NOT TARGET Python::Module AND DEFINED ENV{PYTHON_INCLUDE_DIR})
+  add_library(Python::Module INTERFACE IMPORTED)
+  set_target_properties(Python::Module PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "$ENV{PYTHON_INCLUDE_DIR}")
+  message(STATUS "Created Python::Module (cross-compilation): $ENV{PYTHON_INCLUDE_DIR}")
+endif()
+if(NOT TARGET Python::Python AND DEFINED ENV{PYTHON_INCLUDE_DIR})
+  add_library(Python::Python INTERFACE IMPORTED)
+  set_target_properties(Python::Python PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "$ENV{PYTHON_INCLUDE_DIR}")
+endif()
+
 message(STATUS "OHOS toolchain loaded: target=${OHOS_TARGET}")
 message(STATUS "  C compiler:   ${CMAKE_C_COMPILER}")
 message(STATUS "  C++ compiler: ${CMAKE_CXX_COMPILER}")
