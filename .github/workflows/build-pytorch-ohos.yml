@@ -375,18 +375,20 @@ jobs:
           NATIVE_SLEEF_SRC="$(pwd)/third_party/sleef"
           if [ -f "$NATIVE_SLEEF_SRC/CMakeLists.txt" ]; then
             mkdir -p /tmp/sleef-native-build && cd /tmp/sleef-native-build
-            # 使用系统 gcc 构建原生工具（unset 交叉编译器）
-            env -u CC -u CXX -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+            # 使用系统 gcc 构建原生工具
+            # 显式设定 CC=gcc 而不是 unset（系统默认 gcc 可能被覆盖）
+            CC=gcc CXX=g++ \
               cmake "$NATIVE_SLEEF_SRC" \
                 -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=gcc \
+                -DCMAKE_CXX_COMPILER=g++ \
                 -DBUILD_SHARED_LIBS=OFF \
                 -DSLEEF_BUILD_GNUABI_LIBS=ON \
                 -DSLEEF_BUILD_SCALAR_LIB=OFF \
                 -DSLEEF_BUILD_DFT=OFF \
                 -DSLEEF_BUILD_TESTS=OFF \
                 -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
-            env -u CC -u CXX -u CFLAGS -u CXXFLAGS -u LDFLAGS \
-              make -j"$(nproc)" 2>&1 | tail -10 || true
+            CC=gcc CXX=g++ make -j"$(nproc)" VERBOSE=1 2>&1 | tail -20 || true
             # 复制工具到已知位置
             mkdir -p "$HOME/sleef-native/bin"
             find . -name "mkdisp" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
