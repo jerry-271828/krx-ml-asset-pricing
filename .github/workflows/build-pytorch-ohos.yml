@@ -386,10 +386,7 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_C_COMPILER=gcc \
                 -DCMAKE_CXX_COMPILER=g++ \
-                -DBUILD_SHARED_LIBS=OFF \
                 -DSLEEF_BUILD_GNUABI_LIBS=ON \
-                -DSLEEF_BUILD_SCALAR_LIB=OFF \
-                -DSLEEF_BUILD_DFT=OFF \
                 -DSLEEF_BUILD_TESTS=OFF \
                 -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
             env -u CFLAGS -u CXXFLAGS -u LDFLAGS \
