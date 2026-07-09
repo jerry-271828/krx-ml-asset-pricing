@@ -393,7 +393,7 @@ jobs:
                 -DSLEEF_BUILD_TESTS=OFF \
                 -DCMAKE_INSTALL_PREFIX="$HOME/sleef-native"
             env -u CFLAGS -u CXXFLAGS -u LDFLAGS \
-              CC=gcc CXX=g++ make -j"$(nproc)" VERBOSE=1 2>&1 | tail -20 || true
+              CC=gcc CXX=g++ ninja -j"$(nproc)" -v 2>&1 | tail -20 || true
             # 复制工具到已知位置
             mkdir -p "$HOME/sleef-native/bin"
             find . -name "mkdisp" -type f -executable -exec cp {} "$HOME/sleef-native/bin/" \; 2>/dev/null || true
