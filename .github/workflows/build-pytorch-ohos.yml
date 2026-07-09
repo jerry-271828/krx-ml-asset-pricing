@@ -256,18 +256,29 @@ jobs:
           sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
           # QEMU binfmt 需要找到 musl 动态链接器。直接 symlink 到 /lib/
           sudo mkdir -p /lib
-          # 在 sysroot 中找 musl 动态链接器
-          echo "=== Sysroot structure ==="
-          ls -d "$OHOS_SYSROOT"/lib* "$OHOS_SYSROOT"/usr/lib* 2>/dev/null || true
-          LOADER=$(find "$OHOS_SYSROOT" -name "ld-musl*" -o -name "ld-linux*" 2>/dev/null | head -1)
-          echo "Found loader: $LOADER"
-          if [ -n "$LOADER" ]; then
-            sudo mkdir -p /lib
-            sudo ln -sf "$LOADER" /lib/ld-musl-aarch64.so.1 2>/dev/null || true
-            ls -la /lib/ld-musl* 2>/dev/null || true
-          else
-            echo "WARNING: No dynamic linker found in sysroot - QEMU protoc will fail!"
+          # OHOS sysroot 不包含 musl 动态链接器（ld-musl-aarch64.so.1）。
+          # QEMU 运行 aarch64 二进制时需要它。从 Alpine 下载。
+          if [ ! -f /lib/ld-musl-aarch64.so.1 ]; then
+            echo "Downloading aarch64 musl loader from Alpine..."
+            curl -sL -o /tmp/musl.apk \
+              "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/musl-1.2.5-r8.apk" 2>/dev/null || true
+            if [ -f /tmp/musl.apk ]; then
+              mkdir -p /tmp/musl-extract && cd /tmp/musl-extract
+              tar xzf /tmp/musl.apk 2>/dev/null || true
+              if [ -f lib/ld-musl-aarch64.so.1 ]; then
+                sudo mkdir -p /lib
+                sudo cp lib/ld-musl-aarch64.so.1 /lib/
+                sudo chmod +x /lib/ld-musl-aarch64.so.1
+                echo "Installed musl loader from Alpine"
+              fi
+            fi
+            # Fallback: try to find loader anywhere in the system
+            if [ ! -f /lib/ld-musl-aarch64.so.1 ]; then
+              FOUND=$(find / -name "ld-musl-aarch64*" 2>/dev/null | head -1)
+              [ -n "$FOUND" ] && sudo cp "$FOUND" /lib/ld-musl-aarch64.so.1 && echo "Found loader at $FOUND"
+            fi
           fi
+          ls -la /lib/ld-musl-aarch64.so.1 2>/dev/null || echo "WARNING: musl loader not available"
 
           # Install sleef native tools to /bin/
           if [ -d /tmp/sleef-native-install/bin ]; then
